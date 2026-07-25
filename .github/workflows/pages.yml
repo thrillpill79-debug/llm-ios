@@ -1,0 +1,44 @@
+# Deploys the web app (web/ + the exported model) to GitHub Pages.
+# The site runs the same TinyLLM model fully client-side, so an iPhone with
+# Safari is the only hardware needed: open the URL, Add to Home Screen.
+name: Deploy web app
+
+on:
+  push:
+    branches: [claude/custom-llm-iokoa9]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: JS engine parity test
+        run: node web/test/parity.mjs
+      - name: Assemble site
+        run: |
+          mkdir -p _site/model
+          cp web/index.html web/app.js web/tinygpt.js web/sw.js \
+             web/manifest.webmanifest web/apple-touch-icon.png _site/
+          cp model/export/config.json model/export/vocab.json \
+             model/export/manifest.json model/export/weights.bin _site/model/
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -2,7 +2,36 @@
 
 You don't need a Mac for any of this. GitHub's free macOS runners compile the
 apps; your iPhone runs them; any Windows or Linux PC handles the one
-installation step.
+installation step — and if you have **only an iPhone**, see the next section
+first.
+
+## Only an iPhone? Two paths
+
+**Path 1 — the web app (free, works right now).** Every push deploys the
+TinyLLM model as a web app to GitHub Pages:
+
+> **https://thrillpill79-debug.github.io/llm-ios/**
+
+Open it in Safari on your iPhone → Share → **Add to Home Screen**. It runs
+the exact same exported model, entirely on your phone (verified against the
+PyTorch reference by CI on every deploy), works offline after the first
+visit, and needs no signing, no computer, no money.
+
+**Path 2 — the native apps via TestFlight ($99/year, no computer ever).**
+1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/enroll/)
+   from your iPhone (the Apple Developer app supports on-device enrollment).
+2. In [App Store Connect](https://appstoreconnect.apple.com) (works in
+   Safari), create an API key (Users and Access → Integrations).
+3. Add the key as GitHub secrets (repo Settings → Secrets, also fine from
+   Safari) and say so — wiring the workflows to sign and upload to TestFlight
+   is a small follow-up. After that, builds appear in the TestFlight app on
+   your phone automatically, valid 90 days, updated over the air.
+
+A middle option: UDID signing services (Signulous, AppDB and similar,
+~$20/year) sign the CI-built IPAs entirely from Safari on the phone — you
+upload the IPA, they sign it against their developer account with your
+device's UDID, and you install over the air. Third-party, so read their
+terms, but no computer is involved.
 
 ## 1. Let CI build the apps
 

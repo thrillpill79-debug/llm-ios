@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TinyLLM</title>
+<meta name="description" content="A from-scratch LLM running locally in your browser">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#101018">
+<style>
+  :root {
+    --bg: #101018; --panel: #1a1a26; --text: #e8e8f0; --dim: #8a8aa0;
+    --accent: #7c6cff; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f4f8; --panel: #ffffff; --text: #1a1a24; --dim: #6a6a80; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, sans-serif;
+    min-height: 100dvh; display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 12px calc(12px + env(safe-area-inset-bottom));
+    max-width: 640px; margin: 0 auto;
+  }
+  header { padding: 14px 4px 10px; display: flex; align-items: baseline; gap: 8px; }
+  header h1 { font-size: 1.15rem; }
+  header span { color: var(--dim); font-size: .75rem; }
+  #out {
+    flex: 1; background: var(--panel); border-radius: 14px; padding: 14px;
+    font-family: var(--mono); font-size: .85rem; line-height: 1.5;
+    white-space: pre-wrap; overflow-y: auto; min-height: 40dvh;
+    -webkit-overflow-scrolling: touch;
+  }
+  #out.empty { color: var(--dim); }
+  .controls { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .row label { color: var(--dim); font-size: .75rem; min-width: 86px; }
+  .row output { color: var(--dim); font-size: .75rem; min-width: 34px; text-align: right; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  #prompt {
+    flex: 1; background: var(--panel); color: var(--text); border: none;
+    border-radius: 12px; padding: 12px 14px; font-size: 1rem;
+  }
+  #prompt:focus { outline: 2px solid var(--accent); }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 12px;
+    padding: 12px 18px; font-size: 1rem; font-weight: 600;
+  }
+  button:disabled { opacity: .45; }
+  button.stop { background: #d9534f; }
+  #status { color: var(--dim); font-size: .72rem; text-align: center; min-height: 1em; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>TinyLLM</h1>
+    <span id="modelinfo">loading model…</span>
+  </header>
+  <div id="out" class="empty">Output appears here. This model runs entirely on your
+phone — 818k parameters you (can) train yourself. Try the prompt “ROMEO:”.</div>
+  <div class="controls">
+    <div class="row">
+      <label>Temperature</label>
+      <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.8">
+      <output id="tempv">0.80</output>
+    </div>
+    <div class="row">
+      <label>Max tokens</label>
+      <input type="range" id="ntok" min="50" max="800" step="50" value="300">
+      <output id="ntokv">300</output>
+    </div>
+    <div class="row">
+      <input id="prompt" type="text" value="ROMEO:" placeholder="Prompt"
+             autocapitalize="off" autocorrect="off">
+      <button id="go" disabled>Generate</button>
+    </div>
+    <div id="status"></div>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

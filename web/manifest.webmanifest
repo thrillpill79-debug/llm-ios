@@ -1,0 +1,12 @@
+{
+  "name": "TinyLLM",
+  "short_name": "TinyLLM",
+  "description": "A from-scratch LLM running locally on your phone",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#101018",
+  "theme_color": "#101018",
+  "icons": [
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

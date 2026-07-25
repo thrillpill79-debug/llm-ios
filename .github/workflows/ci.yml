@@ -21,6 +21,14 @@ jobs:
         env:
           LLM_EXPORT_DIR: model/export
 
+  engine-tests-js:
+    name: Engine tests (JavaScript)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run JS parity test
+        run: node web/test/parity.mjs
+
   tinyllm-ipa:
     name: TinyLLM app (unsigned IPA)
     runs-on: macos-15
