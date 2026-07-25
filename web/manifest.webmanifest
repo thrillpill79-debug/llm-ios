@@ -1,7 +1,7 @@
 {
-  "name": "TinyLLM",
-  "short_name": "TinyLLM",
-  "description": "A from-scratch LLM running locally on your phone",
+  "name": "PocketGPT",
+  "short_name": "PocketGPT",
+  "description": "A real LLM assistant running entirely on your phone",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#101018",

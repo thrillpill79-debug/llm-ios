@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>TinyLLM</title>
-<meta name="description" content="Chat with a from-scratch LLM running locally on your phone">
+<title>PocketGPT</title>
+<meta name="description" content="A real LLM assistant running entirely on your phone">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="apple-touch-icon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -13,83 +13,172 @@
 <meta name="theme-color" content="#101018">
 <style>
   :root {
-    --bg: #101018; --panel: #1a1a26; --bubble-user: #7c6cff; --text: #e8e8f0;
-    --dim: #8a8aa0; --mono: ui-monospace, "SF Mono", Menlo, monospace;
-    --accent: #7c6cff;
+    --bg: #101018; --panel: #1c1c28; --panel2: #262635; --accent: #7c6cff;
+    --text: #e8e8f0; --dim: #9090a8; --ok: #4ade80;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f4f4f8; --panel: #e7e7ee; --text: #1a1a24; --dim: #6a6a80; }
+    :root { --bg: #f4f4f8; --panel: #e9e9f0; --panel2: #dcdce6; --text: #16161e; --dim: #62627a; }
   }
-  * { box-sizing: border-box; margin: 0; }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
   body {
     background: var(--bg); color: var(--text);
     font-family: -apple-system, system-ui, sans-serif;
     height: 100dvh; display: flex; flex-direction: column;
-    padding: env(safe-area-inset-top) 12px calc(10px + env(safe-area-inset-bottom));
-    max-width: 640px; margin: 0 auto;
+    padding: env(safe-area-inset-top) 12px calc(8px + env(safe-area-inset-bottom));
+    max-width: 680px; margin: 0 auto; overflow: hidden;
   }
   header {
-    padding: 12px 4px 8px; display: flex; align-items: baseline;
-    justify-content: space-between; gap: 8px;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 2px 8px; flex-shrink: 0;
   }
-  header h1 { font-size: 1.1rem; }
-  header span { color: var(--dim); font-size: .72rem; text-align: right; }
-  #chat {
-    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    display: flex; flex-direction: column; gap: 8px; padding: 6px 2px;
+  header h1 { font-size: 1.1rem; letter-spacing: -.01em; }
+  header .sub { color: var(--dim); font-size: .7rem; }
+  .iconbtn {
+    background: var(--panel); color: var(--text); border: none;
+    border-radius: 10px; padding: 7px 11px; font-size: .78rem;
   }
-  .msg {
-    max-width: 85%; padding: 9px 13px; border-radius: 16px;
-    font-size: .92rem; line-height: 1.45; white-space: pre-wrap;
-    overflow-wrap: break-word;
+  .hidden { display: none !important; }
+
+  /* ---------- setup screen ---------- */
+  #setup { flex: 1; overflow-y: auto; padding-bottom: 12px; }
+  .lead { color: var(--dim); font-size: .82rem; line-height: 1.5; padding: 4px 2px 14px; }
+  .model {
+    display: block; width: 100%; text-align: left; background: var(--panel);
+    border: 1px solid transparent; border-radius: 14px; padding: 13px 15px;
+    margin-bottom: 10px; color: var(--text);
   }
-  .msg.user { align-self: flex-end; background: var(--bubble-user); color: #fff;
+  .model:active { border-color: var(--accent); }
+  .model .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .model .name { font-weight: 600; font-size: .95rem; }
+  .model .size { color: var(--dim); font-size: .74rem; white-space: nowrap; }
+  .model .note { color: var(--dim); font-size: .76rem; margin-top: 4px; line-height: 1.4; }
+  .badge {
+    display: inline-block; background: var(--accent); color: #fff; font-size: .62rem;
+    padding: 2px 7px; border-radius: 99px; margin-left: 6px; vertical-align: middle;
+  }
+  .field {
+    width: 100%; background: var(--panel); color: var(--text); border: none;
+    border-radius: 12px; padding: 11px 14px; font-size: .9rem; margin-top: 6px;
+  }
+  .field:focus { outline: 2px solid var(--accent); }
+  .sectitle { font-size: .74rem; color: var(--dim); text-transform: uppercase;
+              letter-spacing: .06em; padding: 14px 2px 6px; }
+  .primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 12px;
+    padding: 11px 18px; font-size: .9rem; font-weight: 600; margin-top: 8px;
+  }
+  .primary:disabled { opacity: .45; }
+
+  /* ---------- progress ---------- */
+  #progress { flex: 1; display: flex; flex-direction: column; justify-content: center;
+              align-items: center; gap: 14px; padding: 20px; text-align: center; }
+  #bar { width: 100%; max-width: 320px; height: 8px; background: var(--panel);
+         border-radius: 99px; overflow: hidden; }
+  #barfill { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  #ptext { color: var(--dim); font-size: .82rem; line-height: 1.5; }
+
+  /* ---------- chat ---------- */
+  #chat { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+          display: flex; flex-direction: column; gap: 9px; padding: 4px 2px 8px; }
+  .msg { max-width: 86%; padding: 9px 13px; border-radius: 17px; font-size: .92rem;
+         line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff;
               border-bottom-right-radius: 5px; }
-  .msg.bot  { align-self: flex-start; background: var(--panel);
-              font-family: var(--mono); font-size: .85rem;
-              border-bottom-left-radius: 5px; }
+  .msg.bot { align-self: flex-start; background: var(--panel);
+             border-bottom-left-radius: 5px; }
   .msg.note { align-self: center; background: none; color: var(--dim);
-              font-size: .75rem; text-align: center; max-width: 100%; }
-  .row { display: flex; gap: 8px; align-items: center; padding-top: 8px; }
-  .row label { color: var(--dim); font-size: .72rem; }
-  input[type=range] { flex: 1; accent-color: var(--accent); }
-  #tempv { color: var(--dim); font-size: .72rem; min-width: 30px; text-align: right; }
-  #box {
-    flex: 1; background: var(--panel); color: var(--text); border: none;
-    border-radius: 18px; padding: 11px 14px; font-size: 1rem; min-width: 0;
-  }
+              font-size: .76rem; text-align: center; max-width: 100%; line-height: 1.5; }
+  .composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 6px; flex-shrink: 0; }
+  #box { flex: 1; background: var(--panel); color: var(--text); border: none;
+         border-radius: 19px; padding: 11px 15px; font-size: 1rem; resize: none;
+         max-height: 110px; min-height: 42px; line-height: 1.35; font-family: inherit; }
   #box:focus { outline: 2px solid var(--accent); }
-  #send {
-    background: var(--accent); color: #fff; border: none; border-radius: 50%;
-    width: 42px; height: 42px; font-size: 1.15rem; flex-shrink: 0;
-  }
-  #send:disabled { opacity: .45; }
-  #status { color: var(--dim); font-size: .68rem; text-align: center;
-            min-height: .9em; padding-top: 3px; }
+  #send { background: var(--accent); color: #fff; border: none; border-radius: 50%;
+          width: 42px; height: 42px; font-size: 1.1rem; flex-shrink: 0; }
+  #send:disabled { opacity: .4; }
+  #send.stop { background: #e0524f; }
+  #stats { color: var(--dim); font-size: .67rem; text-align: center;
+           min-height: .9em; padding-top: 3px; flex-shrink: 0; }
+
+  /* ---------- settings sheet ---------- */
+  #sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45);
+           display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  #sheetinner { background: var(--bg); width: 100%; max-width: 680px;
+                border-radius: 18px 18px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+                max-height: 85dvh; overflow-y: auto; }
+  .srow { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+  .srow label { color: var(--dim); font-size: .8rem; min-width: 92px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .danger { background: none; color: #e0524f; border: 1px solid #e0524f;
+            border-radius: 12px; padding: 10px; width: 100%; margin-top: 10px; font-size: .86rem; }
+  textarea.field { min-height: 70px; resize: vertical; font-family: inherit; }
 </style>
 </head>
 <body>
   <header>
-    <h1>TinyLLM</h1>
-    <span id="modelinfo">loading model…</span>
+    <div>
+      <h1>PocketGPT</h1>
+      <div class="sub" id="sub">on-device · nothing leaves your phone</div>
+    </div>
+    <div style="display:flex;gap:6px">
+      <button class="iconbtn hidden" id="newchat">New</button>
+      <button class="iconbtn hidden" id="settings">⚙︎</button>
+    </div>
   </header>
-  <div id="chat">
-    <div class="msg note">This is an 818k-parameter model trained only on
-Shakespeare — it answers every message in (garbled) verse, remembers just the
-last ~128 characters, and runs entirely on your phone. It is gloriously
-dumb and completely yours.</div>
+
+  <!-- setup -->
+  <div id="setup">
+    <p class="lead">Pick a model. It downloads once (over Wi-Fi ideally), is stored
+      on your phone, and then works offline forever — no account, no server, no
+      data ever leaving the device.</p>
+    <div id="models"></div>
+    <div class="sectitle">Or paste any GGUF URL</div>
+    <input class="field" id="customurl" placeholder="https://…/model.gguf"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="primary" id="customgo">Load that model</button>
+    <p class="lead" style="padding-top:16px">
+      Tip: an iPhone browser tab has a smaller memory budget than a native app,
+      so the 0.5B model is the safe choice. Bigger ones may reload the page.
+      Want the tiny Shakespeare model you trained instead?
+      <a href="shakespeare.html" style="color:var(--accent)">Open that here.</a>
+    </p>
   </div>
-  <div class="row">
-    <label>Temperature</label>
-    <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.8">
-    <output id="tempv">0.80</output>
+
+  <!-- download / load progress -->
+  <div id="progress" class="hidden">
+    <div id="bar"><div id="barfill"></div></div>
+    <div id="ptext">Starting…</div>
+    <button class="iconbtn" id="cancel">Cancel</button>
   </div>
-  <div class="row">
-    <input id="box" type="text" placeholder="Speak, friend…"
-           autocapitalize="sentences" autocomplete="off">
-    <button id="send" disabled>↑</button>
+
+  <!-- chat -->
+  <div id="chat" class="hidden"></div>
+  <div class="composer hidden" id="composer">
+    <textarea id="box" rows="1" placeholder="Ask anything…"></textarea>
+    <button id="send">↑</button>
   </div>
-  <div id="status"></div>
-  <script type="module" src="app.js"></script>
+  <div id="stats" class="hidden"></div>
+
+  <!-- settings -->
+  <div id="sheet" class="hidden">
+    <div id="sheetinner">
+      <div class="srow"><label>Temperature</label>
+        <input type="range" id="temp" min="0" max="1.4" step="0.05" value="0.7">
+        <output id="tempv" style="color:var(--dim);font-size:.78rem;min-width:30px">0.70</output>
+      </div>
+      <div class="srow"><label>Max reply</label>
+        <input type="range" id="maxtok" min="128" max="2048" step="128" value="512">
+        <output id="maxtokv" style="color:var(--dim);font-size:.78rem;min-width:38px">512</output>
+      </div>
+      <div class="sectitle">System prompt</div>
+      <textarea class="field" id="sysprompt"></textarea>
+      <div class="sectitle">Model</div>
+      <div id="modelinfo" style="color:var(--dim);font-size:.78rem;line-height:1.5"></div>
+      <button class="danger" id="switchmodel">Unload &amp; choose another model</button>
+      <button class="primary" style="width:100%" id="closesheet">Done</button>
+    </div>
+  </div>
+
+  <script type="module" src="pocketgpt.js"></script>
 </body>
 </html>

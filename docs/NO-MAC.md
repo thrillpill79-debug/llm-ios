@@ -7,15 +7,22 @@ first.
 
 ## Only an iPhone? Two paths
 
-**Path 1 — the web app (free, works right now).** Every push deploys the
-TinyLLM model as a web app to GitHub Pages:
+**Path 1 — the web app (free, works right now).** Every push deploys to
+GitHub Pages:
 
 > **https://thrillpill79-debug.github.io/llm-ios/**
 
-Open it in Safari on your iPhone → Share → **Add to Home Screen**. It runs
-the exact same exported model, entirely on your phone (verified against the
-PyTorch reference by CI on every deploy), works offline after the first
-visit, and needs no signing, no computer, no money.
+Open it in Safari on your iPhone → Share → **Add to Home Screen**. No signing,
+no computer, no money, no expiry. Two things live there:
+
+- **PocketGPT** — a genuine instruct-tuned assistant running through
+  llama.cpp compiled to WebAssembly. Pick a model (0.5B recommended for a
+  phone browser tab), it downloads once, and from then on it is offline and
+  private. Because a browser tab gets a much smaller memory budget than a
+  native app, stick to 0.5B-class models on iPhone; the native LlamaChat app
+  below is the way to run 1–3B.
+- **Shakespeare** — the from-scratch model trained in this repo, verified
+  against the PyTorch reference by CI on every deploy.
 
 **Path 2 — the native apps via TestFlight ($99/year, no computer ever).**
 1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/enroll/)

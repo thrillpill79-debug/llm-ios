@@ -1,8 +1,9 @@
-# Deploys the web app (web/ + the exported model) to GitHub Pages by
-# pushing the built site to the gh-pages branch — the repo's active Pages
-# source. GitHub's own "pages build and deployment" picks it up from there.
-# The site runs the TinyLLM model fully client-side: an iPhone with Safari
-# is the only hardware needed (Add to Home Screen for the app experience).
+# Deploys the web app to GitHub Pages by pushing the built site to the
+# gh-pages branch (the repo's active Pages source). GitHub's own
+# "pages build and deployment" publishes it from there.
+#
+# The site is PocketGPT: real instruct models running in the browser via
+# llama.cpp/WASM, plus the from-scratch Shakespeare model on a second page.
 name: Deploy web app
 
 on:
@@ -26,12 +27,14 @@ jobs:
         run: node web/test/parity.mjs
       - name: Assemble site
         run: |
+          mkdir -p _site
+          cp -r web/. _site/
+          rm -rf _site/test
           mkdir -p _site/model
-          cp web/index.html web/app.js web/tinygpt.js web/sw.js \
-             web/manifest.webmanifest web/apple-touch-icon.png _site/
           cp model/export/config.json model/export/vocab.json \
              model/export/manifest.json model/export/weights.bin _site/model/
           touch _site/.nojekyll
+          du -sh _site
       - name: Push to gh-pages
         run: |
           cd _site

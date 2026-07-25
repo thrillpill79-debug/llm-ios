@@ -62,10 +62,17 @@ both apps on free macOS runners (unsigned IPAs as artifacts, numerically
 tested on every push), and a Windows/Linux PC sideloads them onto your
 iPhone.
 
-**Only an iPhone?** The model also ships as a web app —
-**https://thrillpill79-debug.github.io/llm-ios/** — the same exported
-weights running client-side in Safari (`web/`, deployed by CI). Add to Home
-Screen and it behaves like an app, offline included.
+**Only an iPhone?** Everything also runs in Safari, no install required:
+**https://thrillpill79-debug.github.io/llm-ios/**
+
+- **PocketGPT** (main page) — a real instruct-tuned assistant (Qwen2.5 0.5B,
+  SmolLM2 360M, Llama 3.2 1B, or any GGUF URL) running via llama.cpp compiled
+  to WebAssembly. The model downloads once, is stored on the phone, and then
+  works offline. Nothing is sent anywhere.
+- **Shakespeare** (`shakespeare.html`) — the tiny model *you* trained, chatting
+  in verse.
+
+Add to Home Screen and it behaves like an installed app.
 
 A demo model (~0.8 M parameters, char-level, trained on Shakespeare) is
 already committed in `model/export/`, so the iOS app works before you train
