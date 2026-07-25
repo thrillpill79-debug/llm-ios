@@ -202,7 +202,9 @@ final class LlamaEngine: @unchecked Sendable {
         guard ret == 0 else { throw LlamaError.decodeFailed(ret) }
     }
 
-    private func makeSampler(temperature: Float) -> OpaquePointer {
+    // note: llama_sampler is a complete struct type in llama.h, so its
+    // pointer imports as UnsafeMutablePointer, unlike the opaque model/ctx
+    private func makeSampler(temperature: Float) -> UnsafeMutablePointer<llama_sampler> {
         let chain = llama_sampler_chain_init(llama_sampler_chain_default_params())
         if temperature <= 0.05 {
             llama_sampler_chain_add(chain, llama_sampler_init_greedy())
