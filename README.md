@@ -1,13 +1,21 @@
 # llm-ios — your own LLM, trained by you, running on your iPhone
 
-A complete, dependency-light pipeline for owning a language model end to end:
+Two tiers, one repo:
 
+**Tier 1 — TinyLLM: a model you build and train yourself.**
 1. **`python/`** — a GPT-style transformer written from scratch in ~150 lines of
    PyTorch. Train it on any text file you like.
 2. **`model/export/`** — your trained weights in a simple flat binary format
    (a ready-to-use demo model trained on Shakespeare is checked in).
-3. **`ios/`** — a SwiftUI app with a pure-Swift inference engine (no
+3. **`ios/TinyLLM/`** — a SwiftUI app with a pure-Swift inference engine (no
    frameworks, no server, no API keys) that runs the model entirely on-device.
+
+**Tier 2 — LlamaChat: assistant-class pretrained models, still fully on-device.**
+[`ios/LlamaChat/`](ios/LlamaChat/README.md) is a chat app built on llama.cpp
+that runs real instruct models (Qwen2.5 0.5B/1.5B, Llama 3.2 3B, or any GGUF
+you point it at) with Metal acceleration — roughly the practical ceiling of an
+iPhone 15. Tier 1 is for understanding every line; Tier 2 is for a model you
+can actually talk to.
 
 The whole model is small enough to read in one sitting: token + positional
 embeddings, a few pre-norm transformer blocks (causal self-attention + GELU
@@ -94,4 +102,5 @@ plain row-dot-products. The LM head shares the token-embedding matrix
 - **BPE tokenizer** (currently char-level) for better sample quality per FLOP
 - **Instruction tuning**: fine-tune on `question\nanswer` pairs to make it chatty
 - **Quantize to int8** to shrink `weights.bin` 4× for bigger models
-- **Metal / MPSGraph** in the Swift engine if you scale past a few million params
+- **Fine-tune a pretrained model** on your own data and run it in LlamaChat —
+  the bridge between the two tiers
