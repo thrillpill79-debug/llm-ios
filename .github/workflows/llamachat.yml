@@ -21,9 +21,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache llama.xcframework
+      - name: Restore cached llama.xcframework
         id: cache-xcfw
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ios/LlamaChat/vendor/llama.xcframework
           key: llama-xcframework-${{ env.LLAMA_CPP_PYTHON_VERSION }}-v1
@@ -38,6 +38,15 @@ jobs:
           ./build-xcframework.sh
           mkdir -p "$GITHUB_WORKSPACE/ios/LlamaChat/vendor"
           cp -R build-apple/llama.xcframework "$GITHUB_WORKSPACE/ios/LlamaChat/vendor/"
+
+      # save immediately after building, so a failure in later steps
+      # (e.g. a Swift compile error) doesn't throw away the ~45 min build
+      - name: Save llama.xcframework cache
+        if: steps.cache-xcfw.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ios/LlamaChat/vendor/llama.xcframework
+          key: llama-xcframework-${{ env.LLAMA_CPP_PYTHON_VERSION }}-v1
 
       - name: Install XcodeGen
         run: brew install xcodegen
