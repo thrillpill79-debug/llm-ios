@@ -1,6 +1,6 @@
 // Cache-first service worker: after the first visit the app and the model
 // work fully offline (weights are 3.3 MB, cached once).
-const CACHE = "tinyllm-v1";
+const CACHE = "tinyllm-v2"; // bumped: chat UI
 const ASSETS = [
   ".", "index.html", "app.js", "tinygpt.js", "manifest.webmanifest",
   "apple-touch-icon.png",

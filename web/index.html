@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>TinyLLM</title>
-<meta name="description" content="A from-scratch LLM running locally in your browser">
+<meta name="description" content="Chat with a from-scratch LLM running locally on your phone">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="apple-touch-icon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -13,47 +13,59 @@
 <meta name="theme-color" content="#101018">
 <style>
   :root {
-    --bg: #101018; --panel: #1a1a26; --text: #e8e8f0; --dim: #8a8aa0;
-    --accent: #7c6cff; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --bg: #101018; --panel: #1a1a26; --bubble-user: #7c6cff; --text: #e8e8f0;
+    --dim: #8a8aa0; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    --accent: #7c6cff;
   }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f4f4f8; --panel: #ffffff; --text: #1a1a24; --dim: #6a6a80; }
+    :root { --bg: #f4f4f8; --panel: #e7e7ee; --text: #1a1a24; --dim: #6a6a80; }
   }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg); color: var(--text);
     font-family: -apple-system, system-ui, sans-serif;
-    min-height: 100dvh; display: flex; flex-direction: column;
-    padding: env(safe-area-inset-top) 12px calc(12px + env(safe-area-inset-bottom));
+    height: 100dvh; display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 12px calc(10px + env(safe-area-inset-bottom));
     max-width: 640px; margin: 0 auto;
   }
-  header { padding: 14px 4px 10px; display: flex; align-items: baseline; gap: 8px; }
-  header h1 { font-size: 1.15rem; }
-  header span { color: var(--dim); font-size: .75rem; }
-  #out {
-    flex: 1; background: var(--panel); border-radius: 14px; padding: 14px;
-    font-family: var(--mono); font-size: .85rem; line-height: 1.5;
-    white-space: pre-wrap; overflow-y: auto; min-height: 40dvh;
-    -webkit-overflow-scrolling: touch;
+  header {
+    padding: 12px 4px 8px; display: flex; align-items: baseline;
+    justify-content: space-between; gap: 8px;
   }
-  #out.empty { color: var(--dim); }
-  .controls { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
-  .row { display: flex; gap: 10px; align-items: center; }
-  .row label { color: var(--dim); font-size: .75rem; min-width: 86px; }
-  .row output { color: var(--dim); font-size: .75rem; min-width: 34px; text-align: right; }
+  header h1 { font-size: 1.1rem; }
+  header span { color: var(--dim); font-size: .72rem; text-align: right; }
+  #chat {
+    flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    display: flex; flex-direction: column; gap: 8px; padding: 6px 2px;
+  }
+  .msg {
+    max-width: 85%; padding: 9px 13px; border-radius: 16px;
+    font-size: .92rem; line-height: 1.45; white-space: pre-wrap;
+    overflow-wrap: break-word;
+  }
+  .msg.user { align-self: flex-end; background: var(--bubble-user); color: #fff;
+              border-bottom-right-radius: 5px; }
+  .msg.bot  { align-self: flex-start; background: var(--panel);
+              font-family: var(--mono); font-size: .85rem;
+              border-bottom-left-radius: 5px; }
+  .msg.note { align-self: center; background: none; color: var(--dim);
+              font-size: .75rem; text-align: center; max-width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; padding-top: 8px; }
+  .row label { color: var(--dim); font-size: .72rem; }
   input[type=range] { flex: 1; accent-color: var(--accent); }
-  #prompt {
+  #tempv { color: var(--dim); font-size: .72rem; min-width: 30px; text-align: right; }
+  #box {
     flex: 1; background: var(--panel); color: var(--text); border: none;
-    border-radius: 12px; padding: 12px 14px; font-size: 1rem;
+    border-radius: 18px; padding: 11px 14px; font-size: 1rem; min-width: 0;
   }
-  #prompt:focus { outline: 2px solid var(--accent); }
-  button {
-    background: var(--accent); color: #fff; border: none; border-radius: 12px;
-    padding: 12px 18px; font-size: 1rem; font-weight: 600;
+  #box:focus { outline: 2px solid var(--accent); }
+  #send {
+    background: var(--accent); color: #fff; border: none; border-radius: 50%;
+    width: 42px; height: 42px; font-size: 1.15rem; flex-shrink: 0;
   }
-  button:disabled { opacity: .45; }
-  button.stop { background: #d9534f; }
-  #status { color: var(--dim); font-size: .72rem; text-align: center; min-height: 1em; }
+  #send:disabled { opacity: .45; }
+  #status { color: var(--dim); font-size: .68rem; text-align: center;
+            min-height: .9em; padding-top: 3px; }
 </style>
 </head>
 <body>
@@ -61,26 +73,23 @@
     <h1>TinyLLM</h1>
     <span id="modelinfo">loading model…</span>
   </header>
-  <div id="out" class="empty">Output appears here. This model runs entirely on your
-phone — 818k parameters you (can) train yourself. Try the prompt “ROMEO:”.</div>
-  <div class="controls">
-    <div class="row">
-      <label>Temperature</label>
-      <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.8">
-      <output id="tempv">0.80</output>
-    </div>
-    <div class="row">
-      <label>Max tokens</label>
-      <input type="range" id="ntok" min="50" max="800" step="50" value="300">
-      <output id="ntokv">300</output>
-    </div>
-    <div class="row">
-      <input id="prompt" type="text" value="ROMEO:" placeholder="Prompt"
-             autocapitalize="off" autocorrect="off">
-      <button id="go" disabled>Generate</button>
-    </div>
-    <div id="status"></div>
+  <div id="chat">
+    <div class="msg note">This is an 818k-parameter model trained only on
+Shakespeare — it answers every message in (garbled) verse, remembers just the
+last ~128 characters, and runs entirely on your phone. It is gloriously
+dumb and completely yours.</div>
   </div>
+  <div class="row">
+    <label>Temperature</label>
+    <input type="range" id="temp" min="0.1" max="1.5" step="0.05" value="0.8">
+    <output id="tempv">0.80</output>
+  </div>
+  <div class="row">
+    <input id="box" type="text" placeholder="Speak, friend…"
+           autocapitalize="sentences" autocomplete="off">
+    <button id="send" disabled>↑</button>
+  </div>
+  <div id="status"></div>
   <script type="module" src="app.js"></script>
 </body>
 </html>
