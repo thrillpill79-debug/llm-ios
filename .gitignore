@@ -1,0 +1,16 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# training artifacts (checkpoints are big and reproducible; the iOS-ready
+# export in model/export/ IS committed)
+python/checkpoints/
+python/data/
+
+# xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+.DS_Store
