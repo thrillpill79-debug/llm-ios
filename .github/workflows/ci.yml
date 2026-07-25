@@ -1,0 +1,51 @@
+# Runs on every push:
+#  - engine-tests-linux: compiles the TinyLLM engine with the official Swift
+#    toolchain and runs numerical parity tests against the committed model
+#  - tinyllm-ipa: compiles the TinyLLM iOS app on a macOS runner and uploads
+#    an unsigned IPA you can sideload (see docs/NO-MAC.md)
+name: CI
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  engine-tests-linux:
+    name: Engine tests (Swift on Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run SwiftPM tests
+        run: swift test
+        env:
+          LLM_EXPORT_DIR: model/export
+
+  tinyllm-ipa:
+    name: TinyLLM app (unsigned IPA)
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/TinyLLM/project.yml
+      - name: Build for iOS device (unsigned)
+        run: |
+          xcodebuild -project ios/TinyLLM/TinyLLM.xcodeproj \
+            -scheme TinyLLM -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/TinyLLM.app Payload/
+          zip -qry TinyLLM-unsigned.ipa Payload
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TinyLLM-unsigned-ipa
+          path: TinyLLM-unsigned.ipa

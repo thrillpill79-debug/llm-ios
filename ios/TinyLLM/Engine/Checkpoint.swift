@@ -40,13 +40,27 @@ struct Checkpoint {
     private struct Vocab: Decodable { let chars: [String] }
 
     static func load(from bundle: Bundle = .main) throws -> Checkpoint {
-        func data(_ name: String, _ ext: String) throws -> Data {
+        try load { name, ext in
             guard let url = bundle.url(forResource: name, withExtension: ext) else {
                 throw LoadError.missingResource("\(name).\(ext)")
             }
             return try Data(contentsOf: url)
         }
+    }
 
+    /// Load from a plain directory containing the four exported files
+    /// (used by the SwiftPM tests; the app uses load(from bundle:)).
+    static func load(fromDirectory dir: URL) throws -> Checkpoint {
+        try load { name, ext in
+            let url = dir.appendingPathComponent("\(name).\(ext)")
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                throw LoadError.missingResource(url.path)
+            }
+            return try Data(contentsOf: url)
+        }
+    }
+
+    private static func load(_ data: (String, String) throws -> Data) throws -> Checkpoint {
         let decoder = JSONDecoder()
         let config = try decoder.decode(ModelConfig.self, from: data("config", "json"))
         let vocab = try decoder.decode(Vocab.self, from: data("vocab", "json"))

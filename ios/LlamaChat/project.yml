@@ -1,0 +1,39 @@
+# XcodeGen spec for the LlamaChat app.
+#   xcodegen generate --spec ios/LlamaChat/project.yml
+# Expects llama.xcframework at ios/LlamaChat/vendor/llama.xcframework
+# (CI builds it from the pinned llama.cpp source; on a Mac run
+# llama.cpp's build-xcframework.sh and copy the result there).
+name: LlamaChat
+options:
+  bundleIdPrefix: dev.llmios
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  LlamaChat:
+    type: application
+    platform: iOS
+    sources:
+      - path: LlamaChatApp.swift
+      - path: ChatView.swift
+      - path: ChatViewModel.swift
+      - path: Engine
+      - path: ../Shared
+    dependencies:
+      - framework: vendor/llama.xcframework
+        embed: true
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: LlamaChat
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.llmios.llamachat
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+schemes:
+  LlamaChat:
+    build:
+      targets:
+        LlamaChat: all

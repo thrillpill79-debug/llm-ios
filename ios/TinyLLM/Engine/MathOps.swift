@@ -5,6 +5,9 @@ import Foundation
 #if canImport(Accelerate)
 import Accelerate
 #endif
+#if canImport(Glibc)
+import Glibc   // erff/exp/sqrt on Linux (CI test builds)
+#endif
 
 enum MathOps {
 

@@ -57,6 +57,11 @@ Then follow [`ios/README.md`](ios/README.md) — in short: create an iOS App
 project in Xcode, drag in `ios/TinyLLM/` sources and the four files from
 `model/export/`, and run. Generation streams token-by-token, fully offline.
 
+**No Mac?** See [`docs/NO-MAC.md`](docs/NO-MAC.md): GitHub Actions builds
+both apps on free macOS runners (unsigned IPAs as artifacts, numerically
+tested on every push), and a Windows/Linux PC sideloads them onto your
+iPhone.
+
 A demo model (~0.8 M parameters, char-level, trained on Shakespeare) is
 already committed in `model/export/`, so the iOS app works before you train
 anything.

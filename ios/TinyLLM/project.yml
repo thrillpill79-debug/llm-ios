@@ -1,0 +1,35 @@
+# XcodeGen spec for the TinyLLM app.
+#   xcodegen generate --spec ios/TinyLLM/project.yml
+# CI uses this to build an unsigned IPA; on a Mac it replaces the manual
+# "create project and drag files" steps.
+name: TinyLLM
+options:
+  bundleIdPrefix: dev.llmios
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  TinyLLM:
+    type: application
+    platform: iOS
+    sources:
+      - path: TinyLLMApp.swift
+      - path: ContentView.swift
+      - path: Engine
+      - path: ../../model/export
+        buildPhase: resources
+    info:
+      path: Info.plist
+      properties:
+        UILaunchScreen: {}
+        CFBundleDisplayName: TinyLLM
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.llmios.tinyllm
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+schemes:
+  TinyLLM:
+    build:
+      targets:
+        TinyLLM: all

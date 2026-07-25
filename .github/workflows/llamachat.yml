@@ -1,0 +1,65 @@
+# Builds the LlamaChat app (llama.cpp-based) into an unsigned IPA.
+#
+# Manual trigger only (Actions tab -> "LlamaChat IPA" -> Run workflow):
+# the first run compiles llama.xcframework from source (~30-60 min of macOS
+# runner time), after which it is cached and runs take a few minutes.
+# The llama.cpp source is taken from the llama-cpp-python sdist on PyPI —
+# the exact revision the Swift engine was written and verified against.
+name: LlamaChat IPA
+
+on:
+  workflow_dispatch:
+
+env:
+  LLAMA_CPP_PYTHON_VERSION: "0.3.34"
+
+jobs:
+  build:
+    name: LlamaChat app (unsigned IPA)
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache llama.xcframework
+        id: cache-xcfw
+        uses: actions/cache@v4
+        with:
+          path: ios/LlamaChat/vendor/llama.xcframework
+          key: llama-xcframework-${{ env.LLAMA_CPP_PYTHON_VERSION }}-v1
+
+      - name: Build llama.xcframework from pinned source
+        if: steps.cache-xcfw.outputs.cache-hit != 'true'
+        run: |
+          pip3 download "llama-cpp-python==${LLAMA_CPP_PYTHON_VERSION}" \
+            --no-deps --no-binary :all: -d /tmp/sdist
+          tar xzf /tmp/sdist/llama_cpp_python-*.tar.gz -C /tmp
+          cd /tmp/llama_cpp_python-*/vendor/llama.cpp
+          ./build-xcframework.sh
+          mkdir -p "$GITHUB_WORKSPACE/ios/LlamaChat/vendor"
+          cp -R build-apple/llama.xcframework "$GITHUB_WORKSPACE/ios/LlamaChat/vendor/"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/LlamaChat/project.yml
+
+      - name: Build for iOS device (unsigned)
+        run: |
+          xcodebuild -project ios/LlamaChat/LlamaChat.xcodeproj \
+            -scheme LlamaChat -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/LlamaChat.app Payload/
+          zip -qry LlamaChat-unsigned.ipa Payload
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LlamaChat-unsigned-ipa
+          path: LlamaChat-unsigned.ipa
