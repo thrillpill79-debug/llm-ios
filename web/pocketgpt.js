@@ -137,7 +137,7 @@ const settings = {
 };
 
 // shown in Settings so it is obvious whether a deploy has actually landed
-const BUILD = "2026-07-25.5";
+const BUILD = "2026-07-25.6";
 
 // ---------- screens ----------
 
@@ -451,8 +451,19 @@ $("customgo").onclick = () => {
   loadModel(url, url.split("/").pop() || "custom model");
 };
 
+// Register the service worker and adopt new versions automatically: the new
+// worker calls skipWaiting()/claim(), which fires controllerchange, and we
+// reload once so the freshly deployed app is what the user is looking at.
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("sw.js").catch(() => {});
+  let reloading = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (reloading) return;
+    reloading = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register("sw.js")
+    .then((reg) => reg.update().catch(() => {}))
+    .catch(() => {});
 }
 
 renderCatalog();
