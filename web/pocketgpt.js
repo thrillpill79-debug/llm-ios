@@ -175,36 +175,77 @@ async function probeUrl(url) {
 }
 
 /**
- * Resolve a catalog entry to an ordered list of download candidates.
- * The listing from Hugging Face is the source of truth for what exists; the
- * probe only reorders and drops definite 404s. Callers try candidates in turn,
- * so the real downloader has the final say.
+ * Filenames a repo is likely to use, derived from the near-universal
+ * "<model name>-<QUANT>.gguf" convention. These are guesses, used as a safety
+ * net so the app still has something to try when the listing API is
+ * unreachable — blocked, rate-limited, or down.
  */
-async function resolveCandidates(entry, onStep) {
-  const found = [];
+function guessFilenames(repo) {
+  const base = (repo.split("/")[1] ?? "").replace(/-GGUF$/i, "");
+  if (!base) return [];
+  const names = [];
+  for (const q of ["Q4_K_M", "Q4_K_S", "Q4_0", "Q8_0"]) {
+    names.push(`${base}-${q}.gguf`);
+    names.push(`${base.toLowerCase()}-${q.toLowerCase()}.gguf`);
+  }
+  return names;
+}
+
+/**
+ * Build the list of things worth trying, best first.
+ *
+ * The listing API is used when it answers, because it knows the real
+ * filenames; convention-based guesses are appended so a failure of that API
+ * can never leave us with nothing. Nothing is discarded here — the download
+ * itself is the only authority on whether a file works.
+ */
+async function collectCandidates(entry, onStep) {
+  const seen = new Set();
+  const out = [];
+  const add = (repo, path, source) => {
+    const encoded = path.split("/").map(encodeURIComponent).join("/");
+    const url = `https://huggingface.co/${repo}/resolve/main/${encoded}`;
+    if (seen.has(url)) return;
+    seen.add(url);
+    out.push({ url, repo, file: path, source });
+  };
+
   for (const repo of entry.repos) {
     onStep?.(`Looking up ${repo}…`);
     const files = await listRepoFiles(repo);
-    if (!files || files.length === 0) continue;
-
-    for (const candidate of rankCandidates(files).slice(0, 4)) {
-      const path = candidate.path.split("/").map(encodeURIComponent).join("/");
-      const url = `https://huggingface.co/${repo}/resolve/main/${path}`;
-      onStep?.(`Checking ${candidate.path.split("/").pop()}…`);
-      const state = await probeUrl(url);
-      if (state === "missing") continue;
-      found.push({ url, repo, file: candidate.path, size: candidate.size, parts: candidate.parts });
-      if (state === "ok") break;   // verified — no need to look further here
+    if (files?.length) {
+      for (const c of rankCandidates(files).slice(0, 3)) add(repo, c.path, "listing");
     }
-    if (found.length) break;       // this repo gave us something usable
   }
-  return found;
+  for (const repo of entry.repos) {
+    for (const name of guessFilenames(repo)) add(repo, name, "guess");
+  }
+  return out;
+}
+
+/**
+ * Probe candidates in parallel and sort by what we learned: confirmed first,
+ * unknown next, apparently-missing last. Nothing is removed, because a probe
+ * failing is not proof a download will.
+ */
+async function orderByProbe(candidates, onStep) {
+  const head = candidates.slice(0, 10);
+  onStep?.(`Checking ${head.length} possible files…`);
+  const states = await Promise.all(head.map((c) => probeUrl(c.url)));
+  head.forEach((c, i) => { c.probe = states[i]; });
+  const weight = { ok: 0, unknown: 1, missing: 2 };
+  const ordered = [...head].sort((a, b) => weight[a.probe] - weight[b.probe]);
+  return [...ordered, ...candidates.slice(10)];
 }
 
 /** Back-compat single-result form (used by tests). */
 async function resolveModelUrl(entry, onStep) {
   const [first] = await resolveCandidates(entry, onStep);
   return first ?? null;
+}
+
+async function resolveCandidates(entry, onStep) {
+  return orderByProbe(await collectCandidates(entry, onStep), onStep);
 }
 
 /** Errors that mean "try a different file", as opposed to a real failure. */
@@ -276,7 +317,7 @@ const settings = {
 };
 
 // shown in Settings so it is obvious whether a deploy has actually landed
-const BUILD = "2026-07-25.8";
+const BUILD = "2026-07-25.9";
 
 const modeConfig = () => MODES[settings.mode] ?? MODES.precise;
 
@@ -350,27 +391,41 @@ async function loadCatalogModel(entry) {
 
   if (candidates.length === 0) {
     showSetupError(
-      `No download found for ${entry.name}. The repositories may be offline, ` +
-      `renamed, or need sign-in. Try another model, or paste a direct .gguf ` +
-      `URL below.`);
+      `No download source known for ${entry.name}. Paste a direct .gguf URL below.`);
     return;
   }
 
-  // the downloader is the real authority: if one file fails in a way that
-  // suggests it is not there, move on to the next candidate
+  // The downloader is the real authority. Work down the list, moving on when a
+  // failure looks like a missing file and stopping at anything else (running
+  // out of memory, for instance) so the message stays truthful.
+  const attempts = [];
   let lastError = null;
-  for (const candidate of candidates) {
+  for (const candidate of candidates.slice(0, 6)) {
+    setProgress(0, `Trying ${candidate.file}…`);
     try {
       await startModel(candidate.url, entry.name);
       return;
     } catch (err) {
       if (err?.name === "AbortError") { show("setup"); return; }
       lastError = err;
-      if (!looksMissing(err)) break;   // a real failure (e.g. out of memory)
+      attempts.push(`${candidate.repo} → ${candidate.file}` +
+                    `${candidate.probe ? ` [${candidate.probe}]` : ""}: ${shortError(err)}`);
+      if (!looksMissing(err)) break;
     }
   }
+
   store.del("model");
-  showSetupError(`Could not load ${entry.name}: ${describeError(lastError)}`);
+  // Report exactly what was tried: when a download cannot be verified from
+  // here, the details are what make the next step obvious.
+  showSetupError(
+    `Could not load ${entry.name}. Tried ${attempts.length} file(s):\n\n` +
+    attempts.join("\n") +
+    `\n\nTry a smaller model, or paste a direct .gguf URL below.`);
+}
+
+function shortError(err) {
+  const msg = (err?.message ?? String(err)).replace(/\s+/g, " ").trim();
+  return msg.length > 90 ? msg.slice(0, 90) + "…" : msg;
 }
 
 /** Wrapper used for saved and custom models: reports failures itself. */
