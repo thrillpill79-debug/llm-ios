@@ -25,14 +25,10 @@ no computer, no money, no expiry. Two things live there:
   against the PyTorch reference by CI on every deploy.
 
 **Path 2 — the native apps via TestFlight ($99/year, no computer ever).**
-1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/enroll/)
-   from your iPhone (the Apple Developer app supports on-device enrollment).
-2. In [App Store Connect](https://appstoreconnect.apple.com) (works in
-   Safari), create an API key (Users and Access → Integrations).
-3. Add the key as GitHub secrets (repo Settings → Secrets, also fine from
-   Safari) and say so — wiring the workflows to sign and upload to TestFlight
-   is a small follow-up. After that, builds appear in the TestFlight app on
-   your phone automatically, valid 90 days, updated over the air.
+This is the route to run 3B-class models, which a browser tab cannot fit.
+The pipeline is already built: enrol from your iPhone, add four secrets, and
+run the **TestFlight** workflow. Step-by-step instructions, all doable in
+Safari, are in [TESTFLIGHT.md](TESTFLIGHT.md).
 
 A middle option: UDID signing services (Signulous, AppDB and similar,
 ~$20/year) sign the CI-built IPAs entirely from Safari on the phone — you

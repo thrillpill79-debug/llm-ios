@@ -74,6 +74,11 @@ iPhone.
 
 Add to Home Screen and it behaves like an installed app.
 
+**Want the native app instead?** A browser tab is memory-limited to roughly
+1–1.5B parameters; the native LlamaChat app runs 3B-class models. With an
+Apple Developer membership it installs over the air, no computer involved —
+see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
+
 A demo model (~0.8 M parameters, char-level, trained on Shakespeare) is
 already committed in `model/export/`, so the iOS app works before you train
 anything.

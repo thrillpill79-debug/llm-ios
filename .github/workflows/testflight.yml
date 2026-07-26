@@ -1,0 +1,171 @@
+# Signs an app and uploads it to TestFlight, so it can be installed on an
+# iPhone over the air with no computer involved.
+#
+# Requires an Apple Developer Program membership and four repository secrets
+# (Settings -> Secrets and variables -> Actions), all obtainable from Safari:
+#
+#   APPSTORE_ISSUER_ID   App Store Connect -> Users and Access -> Integrations
+#                        -> App Store Connect API -> Issuer ID
+#   APPSTORE_KEY_ID      the Key ID of the API key you create there
+#   APPSTORE_PRIVATE_KEY the contents of the downloaded AuthKey_XXXX.p8 file
+#   APPLE_TEAM_ID        Membership details -> Team ID (10 characters)
+#
+# The bundle identifier defaults to dev.llmios.<app> but can be overridden
+# when running the workflow — useful because bundle IDs are globally unique.
+name: TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: Which app to publish
+        type: choice
+        options: [LlamaChat, TinyLLM]
+        default: LlamaChat
+      bundle_id:
+        description: Bundle identifier (must be unique across the App Store)
+        type: string
+        default: ""
+
+env:
+  LLAMA_CPP_PYTHON_VERSION: "0.3.34"
+
+jobs:
+  testflight:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve settings
+        id: cfg
+        run: |
+          APP="${{ inputs.app }}"
+          BID="${{ inputs.bundle_id }}"
+          if [ -z "$BID" ]; then
+            BID="dev.llmios.$(echo "$APP" | tr '[:upper:]' '[:lower:]')"
+          fi
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "bundle_id=$BID" >> "$GITHUB_OUTPUT"
+          # TestFlight rejects a build number it has already seen, so use the
+          # monotonically increasing run number
+          echo "build_number=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Check secrets are present
+        run: |
+          missing=""
+          [ -z "${{ secrets.APPSTORE_ISSUER_ID }}" ] && missing="$missing APPSTORE_ISSUER_ID"
+          [ -z "${{ secrets.APPSTORE_KEY_ID }}" ] && missing="$missing APPSTORE_KEY_ID"
+          [ -z "${{ secrets.APPSTORE_PRIVATE_KEY }}" ] && missing="$missing APPSTORE_PRIVATE_KEY"
+          [ -z "${{ secrets.APPLE_TEAM_ID }}" ] && missing="$missing APPLE_TEAM_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secrets:$missing — see the comments at the top of this workflow."
+            exit 1
+          fi
+
+      # --- llama.xcframework (LlamaChat only) ---
+      - name: Restore cached llama.xcframework
+        if: steps.cfg.outputs.app == 'LlamaChat'
+        id: cache-xcfw
+        uses: actions/cache/restore@v4
+        with:
+          path: ios/LlamaChat/vendor/llama.xcframework
+          key: llama-xcframework-${{ env.LLAMA_CPP_PYTHON_VERSION }}-v1
+
+      - name: Build llama.xcframework from pinned source
+        if: steps.cfg.outputs.app == 'LlamaChat' && steps.cache-xcfw.outputs.cache-hit != 'true'
+        run: |
+          pip3 download "llama-cpp-python==${LLAMA_CPP_PYTHON_VERSION}" \
+            --no-deps --no-binary :all: -d /tmp/sdist
+          tar xzf /tmp/sdist/llama_cpp_python-*.tar.gz -C /tmp
+          cd /tmp/llama_cpp_python-*/vendor/llama.cpp
+          ./build-xcframework.sh
+          mkdir -p "$GITHUB_WORKSPACE/ios/LlamaChat/vendor"
+          cp -R build-apple/llama.xcframework "$GITHUB_WORKSPACE/ios/LlamaChat/vendor/"
+
+      - name: Save llama.xcframework cache
+        if: steps.cfg.outputs.app == 'LlamaChat' && steps.cache-xcfw.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ios/LlamaChat/vendor/llama.xcframework
+          key: llama-xcframework-${{ env.LLAMA_CPP_PYTHON_VERSION }}-v1
+
+      # --- signing credentials ---
+      - name: Install App Store Connect API key
+        run: |
+          mkdir -p ~/private_keys
+          echo "${{ secrets.APPSTORE_PRIVATE_KEY }}" > ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8
+          # altool looks for the key in this well-known location
+          mkdir -p ~/.appstoreconnect/private_keys
+          cp ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 ~/.appstoreconnect/private_keys/
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec ios/${{ steps.cfg.outputs.app }}/project.yml
+
+      # -allowProvisioningUpdates lets Xcode register the bundle ID, enable the
+      # entitlements it needs, and create the provisioning profile on demand,
+      # authenticating with the API key instead of an interactive login.
+      - name: Archive (signed)
+        run: |
+          APP="${{ steps.cfg.outputs.app }}"
+          xcodebuild -project "ios/$APP/$APP.xcodeproj" \
+            -scheme "$APP" -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "build/$APP.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }} \
+            BUNDLE_ID=${{ steps.cfg.outputs.bundle_id }} \
+            BUILD_NUMBER=${{ steps.cfg.outputs.build_number }} \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            archive
+
+      - name: Export IPA
+        run: |
+          cat > build/ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>uploadSymbols</key><true/>
+            <key>signingStyle</key><string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+          APP="${{ steps.cfg.outputs.app }}"
+          xcodebuild -exportArchive \
+            -archivePath "build/$APP.xcarchive" \
+            -exportOptionsPlist build/ExportOptions.plist \
+            -exportPath build/export \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.APPSTORE_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.APPSTORE_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.APPSTORE_ISSUER_ID }}
+
+      - name: Upload to TestFlight
+        run: |
+          IPA=$(find build/export -name '*.ipa' | head -1)
+          echo "uploading $IPA"
+          xcrun altool --upload-app --type ios --file "$IPA" \
+            --apiKey ${{ secrets.APPSTORE_KEY_ID }} \
+            --apiIssuer ${{ secrets.APPSTORE_ISSUER_ID }}
+
+      - name: Keep the signed IPA as an artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.cfg.outputs.app }}-signed-ipa
+          path: build/export/*.ipa
+          if-no-files-found: ignore
+
+      - name: What happens next
+        run: |
+          echo "Upload finished. Apple processes the build for 5-15 minutes,"
+          echo "then it appears in the TestFlight app on your iPhone."
+          echo "Build number: ${{ steps.cfg.outputs.build_number }}"
