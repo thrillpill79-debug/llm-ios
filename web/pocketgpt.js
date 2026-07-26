@@ -317,7 +317,7 @@ const settings = {
 };
 
 // shown in Settings so it is obvious whether a deploy has actually landed
-const BUILD = "2026-07-25.9";
+const BUILD = "2026-07-26.1";
 
 const modeConfig = () => MODES[settings.mode] ?? MODES.precise;
 
@@ -398,9 +398,15 @@ async function loadCatalogModel(entry) {
   // The downloader is the real authority. Work down the list, moving on when a
   // failure looks like a missing file and stopping at anything else (running
   // out of memory, for instance) so the message stays truthful.
+  // Skip candidates a probe proved absent — but only while others remain. If
+  // every probe said "missing" we try anyway, because probes can be wrong and
+  // a wrong probe must never be the reason a working model is refused.
+  const promising = candidates.filter((c) => c.probe !== "missing");
+  const shortlist = (promising.length ? promising : candidates).slice(0, 6);
+
   const attempts = [];
   let lastError = null;
-  for (const candidate of candidates.slice(0, 6)) {
+  for (const candidate of shortlist) {
     setProgress(0, `Trying ${candidate.file}…`);
     try {
       await startModel(candidate.url, entry.name);
