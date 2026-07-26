@@ -155,38 +155,61 @@ function rankCandidates(files) {
 // exported for tests
 export { rankCandidates, resolveModelUrl };
 
-/** Cheap existence check: ask for one byte rather than trusting the listing. */
-async function urlIsReachable(url) {
+/**
+ * Cheap pre-flight check.
+ *
+ * Returns "ok" | "missing" | "unknown". The distinction matters: a 404 is a
+ * fact, but a network or CORS failure says nothing about whether the file
+ * exists — CDN redirects can refuse a probe and still serve the download fine.
+ * Only "missing" is allowed to rule a candidate out; "unknown" keeps it.
+ */
+async function probeUrl(url) {
   try {
     const res = await fetch(url, { headers: { Range: "bytes=0-0" } });
-    return res.ok || res.status === 206;
+    if (res.ok || res.status === 206) return "ok";
+    if (res.status === 404 || res.status === 401 || res.status === 403) return "missing";
+    return "unknown";
   } catch {
-    return false;
+    return "unknown";
   }
 }
 
 /**
- * Resolve a catalog entry to a download URL that is verified to exist.
- * Tries each repo, and within a repo each candidate quant, so a missing or
- * renamed file self-corrects instead of surfacing as a dead link.
+ * Resolve a catalog entry to an ordered list of download candidates.
+ * The listing from Hugging Face is the source of truth for what exists; the
+ * probe only reorders and drops definite 404s. Callers try candidates in turn,
+ * so the real downloader has the final say.
  */
-async function resolveModelUrl(entry, onStep) {
+async function resolveCandidates(entry, onStep) {
+  const found = [];
   for (const repo of entry.repos) {
     onStep?.(`Looking up ${repo}…`);
     const files = await listRepoFiles(repo);
     if (!files || files.length === 0) continue;
 
-    const candidates = rankCandidates(files);
-    for (const candidate of candidates.slice(0, 4)) {
+    for (const candidate of rankCandidates(files).slice(0, 4)) {
       const path = candidate.path.split("/").map(encodeURIComponent).join("/");
       const url = `https://huggingface.co/${repo}/resolve/main/${path}`;
       onStep?.(`Checking ${candidate.path.split("/").pop()}…`);
-      if (await urlIsReachable(url)) {
-        return { url, repo, file: candidate.path, size: candidate.size, parts: candidate.parts };
-      }
+      const state = await probeUrl(url);
+      if (state === "missing") continue;
+      found.push({ url, repo, file: candidate.path, size: candidate.size, parts: candidate.parts });
+      if (state === "ok") break;   // verified — no need to look further here
     }
+    if (found.length) break;       // this repo gave us something usable
   }
-  return null;
+  return found;
+}
+
+/** Back-compat single-result form (used by tests). */
+async function resolveModelUrl(entry, onStep) {
+  const [first] = await resolveCandidates(entry, onStep);
+  return first ?? null;
+}
+
+/** Errors that mean "try a different file", as opposed to a real failure. */
+function looksMissing(err) {
+  return /not found|404|failed to fetch|networkerror/i.test(err?.message ?? String(err));
 }
 
 // Answer modes. "Precise" exists to reduce made-up answers as far as sampling
@@ -253,7 +276,7 @@ const settings = {
 };
 
 // shown in Settings so it is obvious whether a deploy has actually landed
-const BUILD = "2026-07-25.7";
+const BUILD = "2026-07-25.8";
 
 const modeConfig = () => MODES[settings.mode] ?? MODES.precise;
 
@@ -311,89 +334,114 @@ function setProgress(fraction, text) {
 
 // ---------- model loading ----------
 
-/** Resolve a catalog entry against Hugging Face, then load whatever exists. */
+/** Resolve a catalog entry against Hugging Face, then load whatever works. */
 async function loadCatalogModel(entry) {
   clearSetupError();
   show("progress");
   setProgress(0, `Finding ${entry.name}…`);
+
+  let candidates = [];
   try {
-    const found = await resolveModelUrl(entry, (step) => setProgress(0, step));
-    if (!found) {
-      showSetupError(
-        `Could not find a download for ${entry.name}. The repositories may be ` +
-        `offline or require sign-in. Try another model, or paste a direct ` +
-        `.gguf URL below.`);
-      return;
-    }
-    await loadModel(found.url, entry.name);
+    candidates = await resolveCandidates(entry, (step) => setProgress(0, step));
   } catch (err) {
-    showSetupError(`Could not load ${entry.name}: ${err?.message ?? err}`);
+    showSetupError(`Could not reach Hugging Face for ${entry.name}: ${err?.message ?? err}`);
+    return;
+  }
+
+  if (candidates.length === 0) {
+    showSetupError(
+      `No download found for ${entry.name}. The repositories may be offline, ` +
+      `renamed, or need sign-in. Try another model, or paste a direct .gguf ` +
+      `URL below.`);
+    return;
+  }
+
+  // the downloader is the real authority: if one file fails in a way that
+  // suggests it is not there, move on to the next candidate
+  let lastError = null;
+  for (const candidate of candidates) {
+    try {
+      await startModel(candidate.url, entry.name);
+      return;
+    } catch (err) {
+      if (err?.name === "AbortError") { show("setup"); return; }
+      lastError = err;
+      if (!looksMissing(err)) break;   // a real failure (e.g. out of memory)
+    }
+  }
+  store.del("model");
+  showSetupError(`Could not load ${entry.name}: ${describeError(lastError)}`);
+}
+
+/** Wrapper used for saved and custom models: reports failures itself. */
+async function loadModel(url, label) {
+  try {
+    await startModel(url, label);
+  } catch (err) {
+    if (err?.name === "AbortError") { show("setup"); return; }
+    store.del("model");   // don't retry a broken model on every launch
+    showSetupError(`Could not load ${label}: ${describeError(err)}`);
   }
 }
 
-async function loadModel(url, label) {
+/** Loads a model and throws on failure, so callers can try alternatives. */
+async function startModel(url, label) {
   show("progress");
   setProgress(0, `Preparing ${label}…`);
   abortController = new AbortController();
 
+  if (wllama) { try { await wllama.exit(); } catch {} }
+  wllama = new Wllama(WASM_PATHS, { allowOffline: true, suppressNativeLog: true });
+
+  let lastPct = -1;
+  const common = {
+    n_ctx: settings.contextLength,
+    progressCallback: ({ loaded, total }) => {
+      if (!total) return;
+      const pct = Math.floor((loaded / total) * 100);
+      if (pct === lastPct) return;
+      lastPct = pct;
+      const mb = (n) => (n / 1e6).toFixed(0);
+      setProgress(loaded / total,
+        `Downloading ${label}\n${mb(loaded)} / ${mb(total)} MB — ${pct}%`);
+    },
+    signal: abortController.signal,
+  };
+
+  // Performance settings, each measured against this WebAssembly build:
+  //  - n_threads  : verified OK. No-op unless the page is cross-origin
+  //                 isolated (Turbo), where it gives real multi-core decode.
+  //  - flash_attn : verified OK. Faster attention, less memory per token.
+  //  - quantised KV cache (cache_type_k/v = q8_0): DELIBERATELY OMITTED — it
+  //    would halve KV memory, but it hangs the loader here, and a hang is not
+  //    something the fallback below can rescue.
+  const tuned = { ...common, n_threads: threadCount(), flash_attn: true };
+
   try {
-    if (wllama) { try { await wllama.exit(); } catch {} }
-    wllama = new Wllama(WASM_PATHS, { allowOffline: true, suppressNativeLog: true });
-
-    let lastPct = -1;
-    const common = {
-      n_ctx: settings.contextLength,
-      progressCallback: ({ loaded, total }) => {
-        if (!total) return;
-        const pct = Math.floor((loaded / total) * 100);
-        if (pct === lastPct) return;
-        lastPct = pct;
-        const mb = (n) => (n / 1e6).toFixed(0);
-        setProgress(loaded / total,
-          `Downloading ${label}\n${mb(loaded)} / ${mb(total)} MB — ${pct}%`);
-      },
-      signal: abortController.signal,
-    };
-
-    // Performance settings, each measured against this WebAssembly build:
-    //  - n_threads  : verified OK. No-op unless the page is cross-origin
-    //                 isolated (Turbo), where it gives real multi-core decode.
-    //  - flash_attn : verified OK. Faster attention, less memory per token.
-    //  - quantised KV cache (cache_type_k/v = q8_0): DELIBERATELY OMITTED — it
-    //    would halve KV memory, but it hangs the loader here, and a hang is not
-    //    something the fallback below can rescue.
-    const tuned = { ...common, n_threads: threadCount(), flash_attn: true };
-
-    try {
-      await wllama.loadModelFromUrl(url, tuned);
-    } catch (err) {
-      if (err?.name === "AbortError") throw err;
-      console.warn("tuned load failed, retrying with defaults:", err);
-      setProgress(1, "Starting the model…");
-      await wllama.loadModelFromUrl(url, common);
-    }
-
-    setProgress(1, "Starting the model…");
-    store.set("model", { url, label });
-    isQwen3 = /qwen3/i.test(`${label} ${url}`);
-
-    let meta = "";
-    try {
-      const m = wllama.getModelMetadata();
-      const h = m.hparams;
-      meta = `${label}\n${h.nLayer} layers · ${h.nEmbd} hidden · vocab ${h.nVocab}`;
-    } catch { meta = label; }
-    $("modelinfo").textContent = meta;
-    $("sub").textContent = `${label} · on-device`;
-
-    startNewChat();
-    show("chat");
-    $("box").focus();
+    await wllama.loadModelFromUrl(url, tuned);
   } catch (err) {
-    if (err?.name === "AbortError") { show("setup"); return; }
-    store.del("model");   // don't retry a broken model on every launch
-    showSetupError(`Could not load ${label}: ${err?.message ?? err}`);
+    if (err?.name === "AbortError" || looksMissing(err)) throw err;
+    console.warn("tuned load failed, retrying with defaults:", err);
+    setProgress(1, "Starting the model…");
+    await wllama.loadModelFromUrl(url, common);
   }
+
+  setProgress(1, "Starting the model…");
+  store.set("model", { url, label });
+  isQwen3 = /qwen3/i.test(`${label} ${url}`);
+
+  let meta = "";
+  try {
+    const m = wllama.getModelMetadata();
+    const h = m.hparams;
+    meta = `${label}\n${h.nLayer} layers · ${h.nEmbd} hidden · vocab ${h.nVocab}`;
+  } catch { meta = label; }
+  $("modelinfo").textContent = meta;
+  $("sub").textContent = `${label} · on-device`;
+
+  startNewChat();
+  show("chat");
+  $("box").focus();
 }
 
 async function resumeSavedModel() {
