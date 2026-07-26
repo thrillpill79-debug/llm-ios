@@ -153,7 +153,7 @@ function rankCandidates(files) {
 }
 
 // exported for tests
-export { rankCandidates, resolveModelUrl };
+export { rankCandidates, resolveModelUrl, describeError, isOutOfMemory };
 
 /**
  * Cheap pre-flight check.
@@ -317,7 +317,7 @@ const settings = {
 };
 
 // shown in Settings so it is obvious whether a deploy has actually landed
-const BUILD = "2026-07-26.1";
+const BUILD = "2026-07-26.2";
 
 const modeConfig = () => MODES[settings.mode] ?? MODES.precise;
 
@@ -609,6 +609,8 @@ async function sendMessage() {
 
   if (failure && failure.name !== "AbortError" && !reply) {
     bubble.textContent = `⚠️ ${describeError(failure)}`;
+    // otherwise the next launch reloads the same too-large model and dies again
+    if (isOutOfMemory(failure)) store.del("model");
   } else if (!reply.trim()) {
     bubble.textContent = "(no reply)";
   }
@@ -630,10 +632,27 @@ function dropOldestTurn() {
   return true;
 }
 
+/**
+ * A WebAssembly abort, an out-of-bounds memory access or a failed allocation
+ * all mean the same thing here: the model did not fit in the tab's memory.
+ * The raw text ("(ABORT)") tells the user nothing, so translate it.
+ */
+function isOutOfMemory(err) {
+  if (err?.name === "AbortError") return false;
+  const text = `${err?.message ?? err ?? ""} ${err?.name ?? ""}`.toLowerCase();
+  return /abort|out of memory|oom|memory access out of bounds|allocation failed|table index is out of bounds|maximum memory/.test(text);
+}
+
 function describeError(err) {
   const message = err?.message ?? String(err);
   if (isContextOverflow(err)) {
     return "This conversation no longer fits in the model's context. Tap New to start a fresh chat.";
+  }
+  if (isOutOfMemory(err)) {
+    return "Ran out of memory. This model is too large for a browser tab — a " +
+           "tab gets roughly 1–2 GB, far less than a native app. Open ⚙︎ → " +
+           "\"Unload & choose another model\" and pick Qwen3 1.7B or smaller. " +
+           "For 3B and up, use the native TestFlight app.";
   }
   return message;
 }
