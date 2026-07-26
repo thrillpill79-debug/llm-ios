@@ -144,9 +144,10 @@
            autocapitalize="off" autocorrect="off" spellcheck="false">
     <button class="primary" id="customgo">Load that model</button>
     <p class="lead" style="padding-top:16px">
-      Tip: an iPhone browser tab has a smaller memory budget than a native app,
-      so the 0.5B model is the safe choice. Bigger ones may reload the page.
-      Want the tiny Shakespeare model you trained instead?
+      Any GGUF works — nothing is locked. Larger models take longer to download
+      and run, and a browser tab has less memory than a native app, so if a big
+      one reloads the page, drop down a size. Want the tiny Shakespeare model
+      you trained instead?
       <a href="shakespeare.html" style="color:var(--accent)">Open that here.</a>
     </p>
   </div>
@@ -174,13 +175,24 @@
         <output id="tempv" style="color:var(--dim);font-size:.78rem;min-width:30px">0.70</output>
       </div>
       <div class="srow"><label>Max reply</label>
-        <input type="range" id="maxtok" min="128" max="2048" step="128" value="512">
+        <input type="range" id="maxtok" min="128" max="8192" step="128" value="512">
         <output id="maxtokv" style="color:var(--dim);font-size:.78rem;min-width:38px">512</output>
+      </div>
+      <div class="srow"><label>Context</label>
+        <select id="ctxlen" class="field" style="margin-top:0;flex:1">
+          <option value="1024">1024 tokens</option>
+          <option value="2048">2048 tokens</option>
+          <option value="4096">4096 tokens</option>
+          <option value="8192">8192 tokens</option>
+          <option value="16384">16384 tokens</option>
+          <option value="32768">32768 tokens</option>
+        </select>
       </div>
       <div class="sectitle">System prompt</div>
       <textarea class="field" id="sysprompt"></textarea>
       <div class="sectitle">Model</div>
       <div id="modelinfo" style="color:var(--dim);font-size:.78rem;line-height:1.5"></div>
+      <div id="build" style="color:var(--dim);font-size:.68rem;padding-top:6px"></div>
       <button class="danger" id="switchmodel">Unload &amp; choose another model</button>
       <button class="primary" style="width:100%" id="closesheet">Done</button>
     </div>

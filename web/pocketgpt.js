@@ -6,19 +6,18 @@ import { Wllama } from "./vendor/wllama/index.js";
 
 const WASM_PATHS = { default: "./vendor/wllama/wllama.wasm" };
 
-// Sized for a phone browser tab, which gets a much smaller memory budget than
-// a native app. 0.5B-class models are the reliable choice on iPhone.
-//
 // Filenames are NOT hardcoded: repositories rename and reorganise their quant
 // files, and a guessed URL is a dead link. Instead each entry lists candidate
 // repos, and the app asks Hugging Face's API which .gguf files actually exist,
 // picking the preferred quant from the real listing.
+//
+// Nothing here is capped or gated — bigger models are simply labelled with what
+// they cost, and any GGUF URL can be pasted in.
 const CATALOG = [
   {
     name: "Qwen2.5 0.5B Instruct",
     size: "~400 MB",
-    recommended: true,
-    note: "Best fit for iPhone. Real assistant behaviour, answers in a few seconds.",
+    note: "Quickest to get running. Answers in a couple of seconds.",
     repos: [
       "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
       "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
@@ -28,7 +27,7 @@ const CATALOG = [
   {
     name: "SmolLM2 360M Instruct",
     size: "~270 MB",
-    note: "Smallest and fastest. Chattier than its size suggests, but weak at facts.",
+    note: "Smallest and fastest. Chattier than its size suggests, weak at facts.",
     repos: [
       "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
       "bartowski/SmolLM2-360M-Instruct-GGUF",
@@ -38,11 +37,41 @@ const CATALOG = [
   {
     name: "Llama 3.2 1B Instruct",
     size: "~810 MB",
-    note: "Noticeably smarter. Heavy for a phone tab — may reload the page on older devices.",
+    note: "Noticeably smarter. Solid all-rounder.",
     repos: [
       "unsloth/Llama-3.2-1B-Instruct-GGUF",
       "bartowski/Llama-3.2-1B-Instruct-GGUF",
       "hugging-quants/Llama-3.2-1B-Instruct-Q4_K_M-GGUF",
+    ],
+  },
+  {
+    name: "Qwen2.5 1.5B Instruct",
+    size: "~1.0 GB",
+    note: "Better reasoning and longer answers.",
+    repos: [
+      "Qwen/Qwen2.5-1.5B-Instruct-GGUF",
+      "bartowski/Qwen2.5-1.5B-Instruct-GGUF",
+      "unsloth/Qwen2.5-1.5B-Instruct-GGUF",
+    ],
+  },
+  {
+    name: "Llama 3.2 3B Instruct",
+    size: "~2.0 GB",
+    note: "The most capable of these. Big download, slower per word.",
+    repos: [
+      "unsloth/Llama-3.2-3B-Instruct-GGUF",
+      "bartowski/Llama-3.2-3B-Instruct-GGUF",
+      "hugging-quants/Llama-3.2-3B-Instruct-Q4_K_M-GGUF",
+    ],
+  },
+  {
+    name: "Qwen2.5 7B Instruct",
+    size: "~4.7 GB",
+    note: "Desktop-class. Will not fit most phones — here because you asked for no limits.",
+    repos: [
+      "Qwen/Qwen2.5-7B-Instruct-GGUF",
+      "bartowski/Qwen2.5-7B-Instruct-GGUF",
+      "unsloth/Qwen2.5-7B-Instruct-GGUF",
     ],
   },
 ];
@@ -103,8 +132,12 @@ let generating = false;
 const settings = {
   temperature: store.get("temperature", 0.7),
   maxTokens: store.get("maxTokens", 512),
+  contextLength: store.get("contextLength", 2048),
   system: store.get("system", DEFAULT_SYSTEM),
 };
+
+// shown in Settings so it is obvious whether a deploy has actually landed
+const BUILD = "2026-07-25.5";
 
 // ---------- screens ----------
 
@@ -191,7 +224,7 @@ async function loadModel(url, label) {
 
     let lastPct = -1;
     await wllama.loadModelFromUrl(url, {
-      n_ctx: 2048,
+      n_ctx: settings.contextLength,
       progressCallback: ({ loaded, total }) => {
         if (!total) return;
         const pct = Math.floor((loaded / total) * 100);
@@ -356,7 +389,9 @@ function openSheet() {
   $("tempv").textContent = Number(settings.temperature).toFixed(2);
   $("maxtok").value = settings.maxTokens;
   $("maxtokv").textContent = settings.maxTokens;
+  $("ctxlen").value = String(settings.contextLength);
   $("sysprompt").value = settings.system;
+  $("build").textContent = `build ${BUILD}`;
   $("sheet").classList.remove("hidden");
 }
 
@@ -366,11 +401,24 @@ function closeSheet() {
   const sys = $("sysprompt").value.trim() || DEFAULT_SYSTEM;
   const systemChanged = sys !== settings.system;
   settings.system = sys;
+
+  const newCtx = Number($("ctxlen").value);
+  const ctxChanged = newCtx !== settings.contextLength;
+  settings.contextLength = newCtx;
+
   store.set("temperature", settings.temperature);
   store.set("maxTokens", settings.maxTokens);
+  store.set("contextLength", settings.contextLength);
   store.set("system", settings.system);
   if (systemChanged && messages.length) messages[0] = { role: "system", content: sys };
   $("sheet").classList.add("hidden");
+
+  // context length is fixed when the model is created, so reload it (the file
+  // is already stored locally, so this is quick)
+  if (ctxChanged) {
+    const saved = store.get("model", null);
+    if (saved) loadModel(saved.url, saved.label);
+  }
 }
 
 // ---------- wiring ----------
