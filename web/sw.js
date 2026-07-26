@@ -8,6 +8,26 @@
 // filesystem), not by this cache.
 const CACHE = "pocketgpt-v4";
 
+// Turbo mode: GitHub Pages cannot send COOP/COEP, so when registered as
+// "sw.js?coi=1" we add those headers to our own responses. That makes the page
+// cross-origin isolated, which is what enables SharedArrayBuffer and therefore
+// multi-threaded inference. Cross-origin model downloads are unaffected: they
+// are CORS requests, which remain allowed under require-corp.
+const COI = new URL(self.location).searchParams.get("coi") === "1";
+
+function withIsolation(response) {
+  if (!COI || !response || response.type === "opaque") return response;
+  const headers = new Headers(response.headers);
+  headers.set("Cross-Origin-Embedder-Policy", "require-corp");
+  headers.set("Cross-Origin-Opener-Policy", "same-origin");
+  headers.set("Cross-Origin-Resource-Policy", "same-origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 const SHELL = [
   ".", "index.html", "pocketgpt.js", "manifest.webmanifest",
   "shakespeare.html", "shakespeare.js", "tinygpt.js",
@@ -47,6 +67,7 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       caches.match(e.request, { ignoreSearch: true })
         .then((hit) => hit ?? fetch(e.request))
+        .then(withIsolation)
     );
     return;
   }
@@ -59,10 +80,10 @@ self.addEventListener("fetch", (e) => {
         const copy = fresh.clone();
         caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
       }
-      return fresh;
+      return withIsolation(fresh);
     } catch {
       const hit = await caches.match(e.request, { ignoreSearch: true });
-      if (hit) return hit;
+      if (hit) return withIsolation(hit);
       throw new Error("offline and not cached");
     }
   })());

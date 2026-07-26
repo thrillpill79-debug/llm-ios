@@ -67,6 +67,12 @@
     font-size: .8rem; line-height: 1.5;
   }
   @media (prefers-color-scheme: light) { #setuperror { color: #a8302c; } }
+  .modes { display: flex; gap: 8px; }
+  .modebtn {
+    flex: 1; background: var(--panel); color: var(--text); border: 1px solid transparent;
+    border-radius: 11px; padding: 10px 6px; font-size: .82rem;
+  }
+  .modebtn.active { background: var(--accent); color: #fff; font-weight: 600; }
   .sectitle { font-size: .74rem; color: var(--dim); text-transform: uppercase;
               letter-spacing: .06em; padding: 14px 2px 6px; }
   .primary {
@@ -126,7 +132,8 @@
       <h1>PocketGPT</h1>
       <div class="sub" id="sub">on-device · nothing leaves your phone</div>
     </div>
-    <div style="display:flex;gap:6px">
+    <div style="display:flex;gap:6px;align-items:center">
+      <span id="modelabel" style="color:var(--dim);font-size:.68rem"></span>
       <button class="iconbtn hidden" id="newchat">New</button>
       <button class="iconbtn hidden" id="settings">⚙︎</button>
     </div>
@@ -170,11 +177,14 @@
   <!-- settings -->
   <div id="sheet" class="hidden">
     <div id="sheetinner">
-      <div class="srow"><label>Temperature</label>
-        <input type="range" id="temp" min="0" max="1.4" step="0.05" value="0.7">
-        <output id="tempv" style="color:var(--dim);font-size:.78rem;min-width:30px">0.70</output>
-      </div>
-      <div class="srow"><label>Max reply</label>
+      <div class="sectitle">Answer style</div>
+      <div id="modes" class="modes"></div>
+      <p style="color:var(--dim);font-size:.74rem;line-height:1.5;padding:8px 2px 0">
+        Precise uses greedy decoding and instructs the model to admit when it
+        doesn't know. That cuts invented answers a lot, but no model this size
+        is ever guaranteed correct — check anything that matters.
+      </p>
+      <div class="srow" style="padding-top:14px"><label>Max reply</label>
         <input type="range" id="maxtok" min="128" max="8192" step="128" value="512">
         <output id="maxtokv" style="color:var(--dim);font-size:.78rem;min-width:38px">512</output>
       </div>
@@ -188,6 +198,18 @@
           <option value="32768">32768 tokens</option>
         </select>
       </div>
+      <div class="sectitle">Speed</div>
+      <div class="srow">
+        <label style="min-width:auto;flex:1">Turbo (multi-core)
+          <span id="turbostate" style="display:block;font-size:.68rem;opacity:.75"></span>
+        </label>
+        <input type="checkbox" id="turbo" style="width:22px;height:22px;accent-color:var(--accent)">
+      </div>
+      <p style="color:var(--dim);font-size:.74rem;line-height:1.5;padding:2px 2px 0">
+        Runs inference on several CPU cores instead of one — typically 2–3×
+        faster. Reloads the app when changed. If model downloads start failing,
+        switch it back off.
+      </p>
       <div class="sectitle">System prompt</div>
       <textarea class="field" id="sysprompt"></textarea>
       <div class="sectitle">Model</div>
