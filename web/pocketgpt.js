@@ -8,27 +8,81 @@ const WASM_PATHS = { default: "./vendor/wllama/wllama.wasm" };
 
 // Sized for a phone browser tab, which gets a much smaller memory budget than
 // a native app. 0.5B-class models are the reliable choice on iPhone.
+//
+// Filenames are NOT hardcoded: repositories rename and reorganise their quant
+// files, and a guessed URL is a dead link. Instead each entry lists candidate
+// repos, and the app asks Hugging Face's API which .gguf files actually exist,
+// picking the preferred quant from the real listing.
 const CATALOG = [
   {
     name: "Qwen2.5 0.5B Instruct",
     size: "~400 MB",
     recommended: true,
     note: "Best fit for iPhone. Real assistant behaviour, answers in a few seconds.",
-    url: "https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf",
+    repos: [
+      "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+      "bartowski/Qwen2.5-0.5B-Instruct-GGUF",
+      "unsloth/Qwen2.5-0.5B-Instruct-GGUF",
+    ],
   },
   {
     name: "SmolLM2 360M Instruct",
     size: "~270 MB",
     note: "Smallest and fastest. Chattier than its size suggests, but weak at facts.",
-    url: "https://huggingface.co/HuggingFaceTB/SmolLM2-360M-Instruct-GGUF/resolve/main/smollm2-360m-instruct-q4_k_m.gguf",
+    repos: [
+      "HuggingFaceTB/SmolLM2-360M-Instruct-GGUF",
+      "bartowski/SmolLM2-360M-Instruct-GGUF",
+      "unsloth/SmolLM2-360M-Instruct-GGUF",
+    ],
   },
   {
     name: "Llama 3.2 1B Instruct",
     size: "~810 MB",
     note: "Noticeably smarter. Heavy for a phone tab — may reload the page on older devices.",
-    url: "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
+    repos: [
+      "unsloth/Llama-3.2-1B-Instruct-GGUF",
+      "bartowski/Llama-3.2-1B-Instruct-GGUF",
+      "hugging-quants/Llama-3.2-1B-Instruct-Q4_K_M-GGUF",
+    ],
   },
 ];
+
+// preference order for quantisations: small and good on a phone first
+const QUANT_ORDER = [/q4_k_m/i, /q4_k_s/i, /q4_0/i, /q5_k_m/i, /q8_0/i];
+
+/** List the .gguf files a repo really contains (null if unreachable/gated). */
+async function listRepoFiles(repo) {
+  try {
+    const res = await fetch(`https://huggingface.co/api/models/${repo}/tree/main`);
+    if (!res.ok) return null;
+    const entries = await res.json();
+    return entries
+      .filter((e) => e.type === "file" && e.path.toLowerCase().endsWith(".gguf"))
+      // skip multi-part shards: wllama can load them, but a single file is simpler
+      .filter((e) => !/-\d{5}-of-\d{5}\.gguf$/i.test(e.path))
+      .map((e) => e.path);
+  } catch {
+    return null;
+  }
+}
+
+/** Resolve a catalog entry to a real, existing download URL. */
+async function resolveModelUrl(entry, onStep) {
+  for (const repo of entry.repos) {
+    onStep?.(`Looking up ${repo}…`);
+    const files = await listRepoFiles(repo);
+    if (!files || files.length === 0) continue;
+    let chosen = null;
+    for (const pattern of QUANT_ORDER) {
+      chosen = files.find((f) => pattern.test(f));
+      if (chosen) break;
+    }
+    chosen ??= files[0];
+    const path = chosen.split("/").map(encodeURIComponent).join("/");
+    return { url: `https://huggingface.co/${repo}/resolve/main/${path}`, repo, file: chosen };
+  }
+  return null;
+}
 
 const DEFAULT_SYSTEM =
   "You are PocketGPT, a helpful assistant running entirely on the user's phone. " +
@@ -83,9 +137,20 @@ function renderCatalog() {
     }
     btn.querySelector(".size").textContent = m.size;
     btn.querySelector(".note").textContent = m.note;
-    btn.onclick = () => loadModel(m.url, m.name);
+    btn.onclick = () => loadCatalogModel(m);
     host.appendChild(btn);
   }
+}
+
+function showSetupError(text) {
+  const box = $("setuperror");
+  box.textContent = text;
+  box.classList.remove("hidden");
+  show("setup");
+}
+
+function clearSetupError() {
+  $("setuperror").classList.add("hidden");
 }
 
 function setProgress(fraction, text) {
@@ -94,6 +159,26 @@ function setProgress(fraction, text) {
 }
 
 // ---------- model loading ----------
+
+/** Resolve a catalog entry against Hugging Face, then load whatever exists. */
+async function loadCatalogModel(entry) {
+  clearSetupError();
+  show("progress");
+  setProgress(0, `Finding ${entry.name}…`);
+  try {
+    const found = await resolveModelUrl(entry, (step) => setProgress(0, step));
+    if (!found) {
+      showSetupError(
+        `Could not find a download for ${entry.name}. The repositories may be ` +
+        `offline or require sign-in. Try another model, or paste a direct ` +
+        `.gguf URL below.`);
+      return;
+    }
+    await loadModel(found.url, entry.name);
+  } catch (err) {
+    showSetupError(`Could not load ${entry.name}: ${err?.message ?? err}`);
+  }
+}
 
 async function loadModel(url, label) {
   show("progress");
@@ -136,8 +221,8 @@ async function loadModel(url, label) {
     $("box").focus();
   } catch (err) {
     if (err?.name === "AbortError") { show("setup"); return; }
-    setProgress(0, `Could not load the model.\n${err?.message ?? err}`);
-    setTimeout(() => show("setup"), 2600);
+    store.del("model");   // don't retry a broken model on every launch
+    showSetupError(`Could not load ${label}: ${err?.message ?? err}`);
   }
 }
 
