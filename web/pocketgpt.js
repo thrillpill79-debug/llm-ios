@@ -402,7 +402,9 @@ async function loadCatalogModel(entry) {
   // every probe said "missing" we try anyway, because probes can be wrong and
   // a wrong probe must never be the reason a working model is refused.
   const promising = candidates.filter((c) => c.probe !== "missing");
-  const shortlist = (promising.length ? promising : candidates).slice(0, 6);
+  const shortlist = promising.length
+    ? promising.slice(0, 6)
+    : candidates.slice(0, 3);   // last resort: probes may be wrong, but don't grind
 
   const attempts = [];
   let lastError = null;
