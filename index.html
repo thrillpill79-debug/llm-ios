@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PocketGPT</title>
+<meta name="description" content="A real LLM assistant running entirely on your phone">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="apple-touch-icon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#101018">
+<style>
+  :root {
+    --bg: #101018; --panel: #1c1c28; --panel2: #262635; --accent: #7c6cff;
+    --text: #e8e8f0; --dim: #9090a8; --ok: #4ade80;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f4f8; --panel: #e9e9f0; --panel2: #dcdce6; --text: #16161e; --dim: #62627a; }
+  }
+  * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, system-ui, sans-serif;
+    height: 100dvh; display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top) 12px calc(8px + env(safe-area-inset-bottom));
+    max-width: 680px; margin: 0 auto; overflow: hidden;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 2px 8px; flex-shrink: 0;
+  }
+  header h1 { font-size: 1.1rem; letter-spacing: -.01em; }
+  header .sub { color: var(--dim); font-size: .7rem; }
+  .iconbtn {
+    background: var(--panel); color: var(--text); border: none;
+    border-radius: 10px; padding: 7px 11px; font-size: .78rem;
+  }
+  .hidden { display: none !important; }
+
+  /* ---------- setup screen ---------- */
+  #setup { flex: 1; overflow-y: auto; padding-bottom: 12px; }
+  .lead { color: var(--dim); font-size: .82rem; line-height: 1.5; padding: 4px 2px 14px; }
+  .model {
+    display: block; width: 100%; text-align: left; background: var(--panel);
+    border: 1px solid transparent; border-radius: 14px; padding: 13px 15px;
+    margin-bottom: 10px; color: var(--text);
+  }
+  .model:active { border-color: var(--accent); }
+  .model .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .model .name { font-weight: 600; font-size: .95rem; }
+  .model .size { color: var(--dim); font-size: .74rem; white-space: nowrap; }
+  .model .note { color: var(--dim); font-size: .76rem; margin-top: 4px; line-height: 1.4; }
+  .badge {
+    display: inline-block; background: var(--accent); color: #fff; font-size: .62rem;
+    padding: 2px 7px; border-radius: 99px; margin-left: 6px; vertical-align: middle;
+  }
+  .field {
+    width: 100%; background: var(--panel); color: var(--text); border: none;
+    border-radius: 12px; padding: 11px 14px; font-size: .9rem; margin-top: 6px;
+  }
+  .field:focus { outline: 2px solid var(--accent); }
+  #setuperror {
+    background: rgba(224,82,79,.14); border: 1px solid rgba(224,82,79,.5);
+    color: #ff9b98; border-radius: 12px; padding: 11px 14px; margin-bottom: 12px;
+    font-size: .8rem; line-height: 1.5;
+  }
+  @media (prefers-color-scheme: light) { #setuperror { color: #a8302c; } }
+  .modes { display: flex; gap: 8px; }
+  .modebtn {
+    flex: 1; background: var(--panel); color: var(--text); border: 1px solid transparent;
+    border-radius: 11px; padding: 10px 6px; font-size: .82rem;
+  }
+  .modebtn.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .sectitle { font-size: .74rem; color: var(--dim); text-transform: uppercase;
+              letter-spacing: .06em; padding: 14px 2px 6px; }
+  .primary {
+    background: var(--accent); color: #fff; border: none; border-radius: 12px;
+    padding: 11px 18px; font-size: .9rem; font-weight: 600; margin-top: 8px;
+  }
+  .primary:disabled { opacity: .45; }
+
+  /* ---------- progress ---------- */
+  #progress { flex: 1; display: flex; flex-direction: column; justify-content: center;
+              align-items: center; gap: 14px; padding: 20px; text-align: center; }
+  #bar { width: 100%; max-width: 320px; height: 8px; background: var(--panel);
+         border-radius: 99px; overflow: hidden; }
+  #barfill { height: 100%; width: 0%; background: var(--accent); transition: width .2s; }
+  #ptext { color: var(--dim); font-size: .82rem; line-height: 1.5; }
+
+  /* ---------- chat ---------- */
+  #chat { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch;
+          display: flex; flex-direction: column; gap: 9px; padding: 4px 2px 8px; }
+  .msg { max-width: 86%; padding: 9px 13px; border-radius: 17px; font-size: .92rem;
+         line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--accent); color: #fff;
+              border-bottom-right-radius: 5px; }
+  .msg.bot { align-self: flex-start; background: var(--panel);
+             border-bottom-left-radius: 5px; }
+  .msg.note { align-self: center; background: none; color: var(--dim);
+              font-size: .76rem; text-align: center; max-width: 100%; line-height: 1.5; }
+  .composer { display: flex; gap: 8px; align-items: flex-end; padding-top: 6px; flex-shrink: 0; }
+  #box { flex: 1; background: var(--panel); color: var(--text); border: none;
+         border-radius: 19px; padding: 11px 15px; font-size: 1rem; resize: none;
+         max-height: 110px; min-height: 42px; line-height: 1.35; font-family: inherit; }
+  #box:focus { outline: 2px solid var(--accent); }
+  #send { background: var(--accent); color: #fff; border: none; border-radius: 50%;
+          width: 42px; height: 42px; font-size: 1.1rem; flex-shrink: 0; }
+  #send:disabled { opacity: .4; }
+  #send.stop { background: #e0524f; }
+  #stats { color: var(--dim); font-size: .67rem; text-align: center;
+           min-height: .9em; padding-top: 3px; flex-shrink: 0; }
+
+  /* ---------- settings sheet ---------- */
+  #sheet { position: fixed; inset: 0; background: rgba(0,0,0,.45);
+           display: flex; align-items: flex-end; justify-content: center; z-index: 10; }
+  #sheetinner { background: var(--bg); width: 100%; max-width: 680px;
+                border-radius: 18px 18px 0 0; padding: 18px 16px calc(20px + env(safe-area-inset-bottom));
+                max-height: 85dvh; overflow-y: auto; }
+  .srow { display: flex; align-items: center; gap: 10px; padding: 9px 0; }
+  .srow label { color: var(--dim); font-size: .8rem; min-width: 92px; }
+  input[type=range] { flex: 1; accent-color: var(--accent); }
+  .danger { background: none; color: #e0524f; border: 1px solid #e0524f;
+            border-radius: 12px; padding: 10px; width: 100%; margin-top: 10px; font-size: .86rem; }
+  textarea.field { min-height: 70px; resize: vertical; font-family: inherit; }
+</style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>PocketGPT</h1>
+      <div class="sub" id="sub">on-device · nothing leaves your phone</div>
+    </div>
+    <div style="display:flex;gap:6px;align-items:center">
+      <span id="modelabel" style="color:var(--dim);font-size:.68rem"></span>
+      <button class="iconbtn hidden" id="newchat">New</button>
+      <button class="iconbtn hidden" id="settings">⚙︎</button>
+    </div>
+  </header>
+
+  <!-- setup -->
+  <div id="setup">
+    <p class="lead">Pick a model. It downloads once (over Wi-Fi ideally), is stored
+      on your phone, and then works offline forever — no account, no server, no
+      data ever leaving the device.</p>
+    <div id="setuperror" class="hidden"></div>
+    <div id="models"></div>
+    <div class="sectitle">Or paste any GGUF URL</div>
+    <input class="field" id="customurl" placeholder="https://…/model.gguf"
+           autocapitalize="off" autocorrect="off" spellcheck="false">
+    <button class="primary" id="customgo">Load that model</button>
+    <p class="lead" style="padding-top:16px">
+      Any GGUF works — nothing is locked. Larger models take longer to download
+      and run, and a browser tab has less memory than a native app, so if a big
+      one reloads the page, drop down a size. Want the tiny Shakespeare model
+      you trained instead?
+      <a href="shakespeare.html" style="color:var(--accent)">Open that here.</a>
+    </p>
+  </div>
+
+  <!-- download / load progress -->
+  <div id="progress" class="hidden">
+    <div id="bar"><div id="barfill"></div></div>
+    <div id="ptext">Starting…</div>
+    <button class="iconbtn" id="cancel">Cancel</button>
+  </div>
+
+  <!-- chat -->
+  <div id="chat" class="hidden"></div>
+  <div class="composer hidden" id="composer">
+    <textarea id="box" rows="1" placeholder="Ask anything…"></textarea>
+    <button id="send">↑</button>
+  </div>
+  <div id="stats" class="hidden"></div>
+
+  <!-- settings -->
+  <div id="sheet" class="hidden">
+    <div id="sheetinner">
+      <div class="sectitle">Answer style</div>
+      <div id="modes" class="modes"></div>
+      <p style="color:var(--dim);font-size:.74rem;line-height:1.5;padding:8px 2px 0">
+        Precise uses greedy decoding and instructs the model to admit when it
+        doesn't know. That cuts invented answers a lot, but no model this size
+        is ever guaranteed correct — check anything that matters.
+      </p>
+      <div class="srow" style="padding-top:14px"><label>Max reply</label>
+        <input type="range" id="maxtok" min="128" max="8192" step="128" value="512">
+        <output id="maxtokv" style="color:var(--dim);font-size:.78rem;min-width:38px">512</output>
+      </div>
+      <div class="srow"><label>Context</label>
+        <select id="ctxlen" class="field" style="margin-top:0;flex:1">
+          <option value="1024">1024 tokens</option>
+          <option value="2048">2048 tokens</option>
+          <option value="4096">4096 tokens</option>
+          <option value="8192">8192 tokens</option>
+          <option value="16384">16384 tokens</option>
+          <option value="32768">32768 tokens</option>
+        </select>
+      </div>
+      <div class="sectitle">Speed</div>
+      <div class="srow">
+        <label style="min-width:auto;flex:1">Turbo (multi-core)
+          <span id="turbostate" style="display:block;font-size:.68rem;opacity:.75"></span>
+        </label>
+        <input type="checkbox" id="turbo" style="width:22px;height:22px;accent-color:var(--accent)">
+      </div>
+      <p style="color:var(--dim);font-size:.74rem;line-height:1.5;padding:2px 2px 0">
+        Runs inference on several CPU cores instead of one — typically 2–3×
+        faster. Reloads the app when changed. If model downloads start failing,
+        switch it back off.
+      </p>
+      <div class="sectitle">System prompt</div>
+      <textarea class="field" id="sysprompt"></textarea>
+      <div class="sectitle">Model</div>
+      <div id="modelinfo" style="color:var(--dim);font-size:.78rem;line-height:1.5"></div>
+      <div id="build" style="color:var(--dim);font-size:.68rem;padding-top:6px"></div>
+      <button class="danger" id="switchmodel">Unload &amp; choose another model</button>
+      <button class="primary" style="width:100%" id="closesheet">Done</button>
+    </div>
+  </div>
+
+  <script type="module" src="pocketgpt.js"></script>
+</body>
+</html>
