@@ -79,6 +79,11 @@ Add to Home Screen and it behaves like an installed app.
 Apple Developer membership it installs over the air, no computer involved —
 see [`docs/TESTFLIGHT.md`](docs/TESTFLIGHT.md).
 
+**Expo Go wrapper** ([`expo/`](expo/README.md)) — the same web app in an Expo Go
+container: app icon, fullscreen, free, no Apple account. It is a WebView, so
+the memory ceiling is identical to Safari's; it buys presentation, not
+capacity.
+
 A demo model (~0.8 M parameters, char-level, trained on Shakespeare) is
 already committed in `model/export/`, so the iOS app works before you train
 anything.

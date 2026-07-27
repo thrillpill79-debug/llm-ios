@@ -1,0 +1,66 @@
+# Publishes the Expo Go wrapper so it can be opened on a phone with no
+# computer involved.
+#
+# The project is generated fresh with create-expo-app each run, so the Expo
+# SDK always matches whatever the current Expo Go app supports — pinning a
+# version here would rot and break the QR-code install.
+#
+# Requires one secret: EXPO_TOKEN (expo.dev -> Account settings -> Access
+# tokens). See expo/README.md.
+name: Publish to Expo Go
+
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check EXPO_TOKEN is set
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::Missing EXPO_TOKEN secret — see expo/README.md step 3."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Generate the Expo project
+        run: |
+          npx --yes create-expo-app@latest build-app --template blank --no-install
+          cd build-app
+          npm install
+          npx expo install react-native-webview react-native-safe-area-context expo-status-bar
+
+      - name: Apply our app source and config
+        run: |
+          cp expo/App.js build-app/App.js
+          # keep the generated project's own values (SDK, entry point) and layer
+          # ours on top, rather than overwriting a file we did not generate
+          python3 - <<'PY'
+          import json
+          gen = json.load(open("build-app/app.json"))
+          ours = json.load(open("expo/app.json"))
+          gen.setdefault("expo", {}).update(ours["expo"])
+          json.dump(gen, open("build-app/app.json", "w"), indent=2)
+          print(json.dumps(gen, indent=2))
+          PY
+
+      - name: Publish the update
+        working-directory: build-app
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          npx --yes eas-cli@latest init --id-only --non-interactive || true
+          npx --yes eas-cli@latest update --branch production \
+            --message "PocketGPT from ${GITHUB_SHA::7}" --non-interactive
+
+      - name: Where to find it
+        run: |
+          echo "Open Expo Go on your iPhone, sign in with the same expo.dev"
+          echo "account, and the project appears under Projects."

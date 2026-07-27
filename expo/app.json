@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "PocketGPT",
+    "slug": "pocketgpt",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#101018",
+    "primaryColor": "#7c6cff",
+    "splash": {
+      "backgroundColor": "#101018",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "bundleIdentifier": "dev.llmios.pocketgpt",
+      "supportsTablet": true,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "dev.llmios.pocketgpt"
+    },
+    "updates": {
+      "fallbackToCacheTimeout": 0
+    },
+    "assetBundlePatterns": ["**/*"]
+  }
+}
